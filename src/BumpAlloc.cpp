@@ -1,4 +1,5 @@
 #include "BumpAlloc.hpp"
+#include <algorithm>
 //---------------------------------------------------------------------------
 /* adaptivelindp: Reference implementation of the adaptive LinDP algorithm
  * Copyright (C) 2024 Altan Birler

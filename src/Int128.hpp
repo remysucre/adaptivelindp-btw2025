@@ -36,7 +36,7 @@ class Int128 {
         uint64_t low = _umul128(a, b, &high);
         return {low, high};
 #else
-        auto x = static_cast<unsigned __int128_t>(a) * b;
+        auto x = static_cast<unsigned __int128>(a) * b;
         return {static_cast<uint64_t>(x), static_cast<uint64_t>(x >> 64)};
 #endif
     }
