@@ -13,13 +13,13 @@ time budget?*
 
 | shape  | SMS (ours) | adaptive LinDP (full) | adaptive DP kernel | old DP kernel | vs LinDP | vs DP kernel |
 |--------|-----------:|----------------------:|-------------------:|--------------:|---------:|-------------:|
-| chain  | 18.2M      | 793                   | 19.9K              | 2.5K          | ~23,000× | ~900×        |
-| clique | 18.2M      | 296                   | 12.2K              | 2.1K          | ~61,000× | ~1,500×      |
+| chain  | 16.2M      | 793                   | 19.9K              | 2.5K          | ~20,000× | ~800×        |
+| clique | 16.2M      | 296                   | 12.2K              | 2.1K          | ~55,000× | ~1,300×      |
 | star   | 16.2M      | 4.4K                  | 8M                 | 43.7K         | ~3,700×  | 2.0×         |
 | tree   | 4.4M       | 1.8K                  | 3.1M               | 59.2K         | ~2,500×  | 1.4×         |
 
-At the sizes the baseline needs ~1 s for, SMS takes: 2K chain ≈ 0.07 ms,
-2K clique ≈ 0.05 ms, 3M star ≈ 108 ms, 1.5M tree ≈ 234 ms.
+At the sizes the baseline needs ~1 s for, SMS takes: 2K chain ≈ 0.03 ms,
+2K clique ≈ 0.02 ms, 3M star ≈ 105 ms, 1.5M tree ≈ 210 ms.
 
 ## The algorithms
 
@@ -27,7 +27,8 @@ At the sizes the baseline needs ~1 s for, SMS takes: 2K chain ≈ 0.07 ms,
 attribute) plus relation sizes, and produces a *join tree* for Yannakakis-style
 semi-join processing:
 
-1. Sort relations by size (radix sort — linear time).
+1. Sort relations by size (LSD radix sort — linear time; the digit width
+   scales with the input so tiny queries don't pay a fixed histogram cost).
 2. Run Tarjan & Yannakakis' maximum cardinality search, which is essentially
    Prim's algorithm over the hypergraph, breaking ties toward larger
    relations. Runs in time linear in the hypergraph size.

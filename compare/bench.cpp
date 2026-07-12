@@ -21,6 +21,8 @@
 #include "../src/Plan.hpp"
 #include "../src/QueryGraph.hpp"
 #include "../src/Random.hpp"
+#include <algorithm>
+#include <bit>
 #include <cinttypes>
 #include <cmath>
 #include <cstdio>
@@ -155,13 +157,26 @@ struct SMSResult {
 };
 
 static void radixSortBySize(const vector<uint32_t>& sizes, vector<uint32_t>& order) {
-    // LSD radix sort of edge ids by 32-bit size key, two 16-bit passes
+    // LSD radix sort of edge ids by 32-bit size key. The digit width scales
+    // with m (#buckets ~ m, clamped to [2^8, 2^16]) and passes cover only the
+    // bits where keys differ, so tiny inputs don't pay a fixed 2^16-bucket
+    // prefix scan (~30us) per call.
     const size_t m = order.size();
+    if (m < 2)
+        return;
     vector<uint32_t> tmp(m);
-    static constexpr size_t B = 1 << 16;
+    uint32_t lo = ~0u, hi = 0;
+    for (size_t i = 0; i < m; i++) {
+        lo &= sizes[order[i]];
+        hi |= sizes[order[i]];
+    }
+    const int bits = bit_width(lo ^ hi); // highest differing bit
+    if (!bits)
+        return; // all keys equal
+    const int digit = clamp(static_cast<int>(bit_width(m)), 8, 16);
+    const size_t B = size_t(1) << digit;
     vector<uint32_t> count(B);
-    for (int pass = 0; pass < 2; pass++) {
-        const int shift = pass * 16;
+    for (int shift = 0; shift < bits; shift += digit) {
         memset(count.data(), 0, B * sizeof(uint32_t));
         for (size_t i = 0; i < m; i++)
             count[(sizes[order[i]] >> shift) & (B - 1)]++;
