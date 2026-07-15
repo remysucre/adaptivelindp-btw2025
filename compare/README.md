@@ -74,14 +74,64 @@ figure's star n = 3M).
   size-prioritized) and it is the appropriate object for Yannakakis-style
   execution.
 
+## Executing the plans (Yannakakis COUNT(*))
+
+`exec.cpp` checks that the join trees SMS produces at the *largest* sizes are
+actually executable: it materializes real relations (domain [0, D=4) per
+attribute, D "diagonal" rows per table so the join is never empty, plus 0–3
+random rows), builds the join tree from the actual table sizes, and computes
+`COUNT(*)` of the full join in **one bottom-up Yannakakis pass** (semi-join +
+COUNT pushdown fused; COUNT(*) needs no top-down pass). Counts are reported
+mod 2^61−1 — the true counts are astronomical by design.
+
+Measured at the largest sizes SMS plans within 1 s (Apple M-series,
+single-threaded; `values` = Σ arity·rows). Default tiny tables (~5.5 rows
+each) and 100-rows-per-table (`exec <shape> 0 100`):
+
+| shape  | n (tables) | rows  | plan (SMS) | execute COUNT(*) | ns/value |
+|--------|-----------:|------:|-----------:|-----------------:|---------:|
+| chain  | 16.2M      | 89.1M | 0.30 s     | 0.52 s           | 2.9      |
+| clique | 16.2M      | 89.1M | 0.23 s     | 0.70 s           | 7.9      |
+| star   | 16.2M      | 89.1M | 0.31 s     | 0.60 s           | 3.2      |
+| tree   | 4.4M       | 24.2M | 0.85 s     | 1.12 s           | 23.2     |
+| chain  | 16.2M      | 1.64B | 0.28 s     | 3.29 s           | 1.00     |
+| clique | 16.2M      | 1.64B | 0.16 s     | 5.62 s           | 3.42     |
+| star   | 16.2M      | 1.64B | 0.25 s     | 5.43 s           | 1.65     |
+| tree   | 4.4M       | 447M  | 0.83 s     | 2.41 s           | 2.70     |
+
+Execution is linear-ish across the whole sweep (n = 1K … 16.2M): at 100
+rows/table ns/value is flat at 1.0 (chain), 1.65 (star), 3.4 (clique), and
+creeps 1.1 → 2.7 for random trees (parent/child accesses fall out of cache;
+bigger constant, still near-linear) — i.e. ~1.6 *billion* rows counted in
+3–6 s, roughly 300–500M rows/s single-threaded. With tiny tables per-table
+overhead dominates (~3–8 ns/value; trees ~23). The executor iterates rows
+outer / children inner so wide tables (a star center has one attribute per
+child) stream memory sequentially instead of doing one strided column scan
+per child.
+
+Correctness: 120 brute-force comparisons (all shapes, n = 2…8, random D,
+counts match exact join enumeration) plus a two-tree check at n = 1K/20K
+(same database, two *different* SMS trees from reshuffled declared sizes must
+give identical counts — they do, mod 2^61−1) — run `exec verify`. Every
+executed tree is also validated with the join tree property checker first.
+
 ## Files
 
-- `bench.cpp` — benchmark driver: C++ port of SMS
+- `sms.hpp` — C++ port of SMS
   (from `Linear_time_semi_join_planning/sms/{radix_sort,mcs}.py`), the
-  hypergraph encodings, the join tree validator, and wrappers around this
+  hypergraph encodings, the join tree validator, and the query generators;
+  shared by `bench.cpp` and `exec.cpp`.
+- `bench.cpp` — benchmark driver: SMS plus wrappers around this
   repo's LinDP / DP-kernel implementations.
   Usage: `bench <algo> <shape> [n]` with algo ∈ {sms, sms-verify,
   lindp-new-{none,basic,sorted}, lindp-old-sorted, dp-new, dp-old}.
+- `exec.cpp` — Yannakakis COUNT(*) executor for SMS join trees (see above).
+  Usage: `exec verify` or `exec <shape> [n] [rows] [maxN]` (n=0 sweeps;
+  rows = rows per table, default ~5.5); sweeps write
+  `results/exec_<shape>.csv` / `results/exec100_<shape>.csv`
+  (`type,n,rows,values,gen_s,plan_s,exec_s,ns_per_value,count,overflow`).
+- `SERVER-NOTES.md` — how to run the executor at larger scales on a server:
+  memory/time models, hard ceilings, invocation, tips.
 - `run_all.sh`, `run_dp.sh` — resumable drivers for the full suite.
 - `results/*.csv` — raw measurements (`algo,type,n,m,trial,time`).
 - `plot.py` — builds `fig15_comparison.png` and the summary table.
@@ -93,6 +143,8 @@ c++ -std=c++2c -O3 -march=native -DNDEBUG -w compare/bench.cpp \
     src/Benchmark.cpp src/BumpAlloc.cpp src/DP.cpp src/LinDP.cpp \
     src/QueryGraph.cpp src/IKKBZ.cpp src/MDQ.cpp src/UnionFind.cpp \
     -o compare/bench
+c++ -std=c++2c -O3 -march=native -DNDEBUG -w compare/exec.cpp \
+    src/QueryGraph.cpp src/UnionFind.cpp -o compare/exec
 compare/run_all.sh && compare/run_dp.sh && python3 compare/plot.py
 ```
 

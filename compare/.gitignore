@@ -1,3 +1,4 @@
 bench
 results/*.done
 results/*.log
+exec
